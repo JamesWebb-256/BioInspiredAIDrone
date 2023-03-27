@@ -1,8 +1,9 @@
 import numpy as np
 import pygame
+
 pygame.init()
 from Drone import *
-#from Physics import *
+# from Physics import *
 
 from pygame.locals import (
     K_UP,
@@ -25,12 +26,12 @@ while running:
 
     for event in ev:
         pressed_keys = pygame.key.get_pressed()
-        #if pressed_keys[K_UP]:
+        # if pressed_keys[K_UP]:
 
         if event.type == pygame.KEYDOWN:
             if event.key == K_UP:
                 Drone.RotorsOn = True
-                Drone.force = np.array([[0, 9.8-30]])
+                Drone.force = np.array([[0, 9.8 - 30]])
 
         if event.type == pygame.KEYUP:
             if event.key == K_UP:
@@ -40,7 +41,6 @@ while running:
         if pressed_keys[K_UP]:
             Drone.move()
             Drone.draw(display)
-
 
         if event.type == pygame.QUIT:
             running = False

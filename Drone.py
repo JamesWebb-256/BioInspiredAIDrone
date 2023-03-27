@@ -1,10 +1,9 @@
 import numpy as np
 import pygame
 
-
-
 TIME_DELAY = 0.001
-#TIME_DELAY = 1
+# TIME_DELAY = 1
+
 
 # This class defines the drone itself.
 # velocity: 2d array of the forces acting in each dimension. We'll keep it 2d for now but only change the y axis.
@@ -25,10 +24,9 @@ class Drone:
         self.RotorsOn = False
         self.RotorForce = 15
 
-
     # Function to draw the drone on the area (Doesn't need to be called when fully training)
     def draw(self, surface):
-        surface.fill((0,0,0))
+        surface.fill((0, 0, 0))
         pygame.draw.circle(surface, self.colour, (self.position[0][0],
                            self.position[0][1]), self.radius)
         pygame.display.update()
@@ -45,8 +43,3 @@ class Drone:
     def move(self):
         self.velocity = self.velocity + ((self.force / self.mass) * TIME_DELAY)
         self.position = self.position + self.velocity * TIME_DELAY
-
-
-
-
-
