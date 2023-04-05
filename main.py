@@ -8,6 +8,20 @@ from math import sin, cos, tan, radians, atan2, degrees
 
 pygame.font.init()  # init font
 
+# =========== Variables to play around with ============
+# =================== Drone Specs ==================================
+
+DRONE_DBG = False
+MAX_VEL = 100
+MAX_VEL_REDUCTION = 1  # at the start reduce maximum speed
+ACC_STRENGTH = 1
+BRAKE_STRENGTH = 1
+TURN_VEL = 2
+SENSOR_DISTANCE = 200
+ACTIVATION_THRESHOLD = 0.5
+
+
+# =========== Recommend not changing these =============
 WIN_WIDTH = 1200
 WIN_HEIGHT = 600
 STAT_FONT = pygame.font.SysFont("comicsans", 50)
@@ -27,17 +41,6 @@ ceil_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil
                  pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_1.png")), (WIN_WIDTH, 100)), -180)]
 
 cave_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_1.png")), (WIN_WIDTH, WIN_HEIGHT))]
-
-# =================== Drone Specs ==================================
-
-DRONE_DBG = False
-MAX_VEL = 100
-MAX_VEL_REDUCTION = 1  # at the start reduce maximum speed
-ACC_STRENGTH = 1
-BRAKE_STRENGTH = 1
-TURN_VEL = 2
-SENSOR_DISTANCE = 200
-ACTIVATION_THRESHOLD = 0.5
 
 
 # ========= Surroundings =========
