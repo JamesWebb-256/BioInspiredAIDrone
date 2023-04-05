@@ -1,4 +1,5 @@
 import pygame
+import math
 import random
 import os
 import time
@@ -12,14 +13,11 @@ pygame.font.init()  # init font
 # =================== Drone Specs ==================================
 
 DRONE_DBG = False
-MAX_VEL = 100
-MAX_VEL_REDUCTION = 1  # at the start reduce maximum speed
-ACC_STRENGTH = 1
-BRAKE_STRENGTH = 1
-TURN_VEL = 2
+MAX_VEL = 200
+ACC_STRENGTH = 2
+BRAKE_STRENGTH = 2
 SENSOR_DISTANCE = 200
 ACTIVATION_THRESHOLD = 0.5
-
 
 # =========== Recommend not changing these =============
 WIN_WIDTH = 1200
@@ -28,12 +26,17 @@ STAT_FONT = pygame.font.SysFont("comicsans", 50)
 END_FONT = pygame.font.SysFont("comicsans", 70)
 DRAW_LINES = False
 
+drone_height = 20
+drone_width = 20
+
 WIN = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
 pygame.display.set_caption("Cave Explorer")
 
+OBSTACLE_COLOUR = (185, 122, 87)
+
 gen = 0
 
-drone_images = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "blue_drone.png")), (20, 20))]
+drone_images = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "blue_drone.png")), (drone_width, drone_height))]
 bg_img = pygame.transform.scale(pygame.image.load(os.path.join("imgs", "background.png")), (WIN_WIDTH, WIN_HEIGHT))
 
 ceil_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_1.png")), (WIN_WIDTH, 100)),
@@ -41,7 +44,6 @@ ceil_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil
                  pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_1.png")), (WIN_WIDTH, 100)), -180)]
 
 cave_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_1.png")), (WIN_WIDTH, WIN_HEIGHT))]
-
 
 # ========= Surroundings =========
 class Cave:
@@ -88,6 +90,8 @@ class Ceil:
         :return: None
         """
         win.blit(self.IMG, (self.x, self.y))
+
+
 # ========= End of Surroundings =========
 
 
@@ -125,7 +129,8 @@ class Drone:
         # command[0] controls the movement forward and backwards from value [-1, 1]
         # command[1] controls the movement sideways from value [-1, 1]
 
-        if self.commands[0] > ACTIVATION_THRESHOLD or self.commands[0] < (- ACTIVATION_THRESHOLD):  # If going forward/backwards
+        if self.commands[0] > ACTIVATION_THRESHOLD or self.commands[0] < (
+        - ACTIVATION_THRESHOLD):  # If going forward/backwards
             self.vert = self.commands[0] * ACC_STRENGTH
 
         if self.commands[1] > ACTIVATION_THRESHOLD or self.commands[1] < (- ACTIVATION_THRESHOLD):  # If going sideways
@@ -141,19 +146,73 @@ class Drone:
 
         return self.x, self.y
 
+
+class Sensor:
+    def __init__(self, x, y, angle, sen_range):
+        self.x = x
+        self.y = y
+        self.angle = angle
+        self.range = sen_range
+
+    def detect_obstacle(self, obstacle_image):
+        # Calculate the endpoint of the sensor's range
+        end_x = self.x + math.cos(math.radians(self.angle)) * self.range
+        end_y = self.y - math.sin(math.radians(self.angle)) * self.range
+
+        obstacle_mask = pygame.mask.from_surface(obstacle_image)
+        # Create a mask for the sensor's line of sight
+        sight_mask = pygame.mask.from_surface(pygame.Surface((self.range * 2, self.range * 2), pygame.SRCALPHA))
+
+        # Check if the sensor overlaps with the obstacle mask
+        if obstacle_mask.overlap(sight_mask, (int(self.x - self.range), int(self.y - self.range))):
+            print('------------------------------')
+            return True
+        else:
+            return False
+
+    def check_radar(self, win):
+        length = 0
+        end_x = round(self.x)
+        end_y = round(self.y)
+
+        # While We Don't Hit BORDER_COLOR AND length < 300 (just a max) -> go further and further
+        while not win.get_at((end_x, end_y)) == OBSTACLE_COLOUR and length < self.range:
+            length = length + 1
+            end_x = int(self.x + math.cos(math.radians(self.angle)) * length)
+            if end_x < 0:
+                end_x = 0
+            if end_x > WIN_WIDTH:
+                end_x = WIN_WIDTH
+
+            end_y = int(self.y - math.sin(math.radians(self.angle)) * length)
+            if end_y < 0:
+                end_y = 0
+            if end_y > WIN_HEIGHT:
+                end_y = WIN_HEIGHT
+
+        # Calculate Distance To Border And Append To Radars List
+        dist = int(math.sqrt(math.pow(end_x - self.x, 2) + math.pow(end_y - self.y, 2)))
+
+        return dist
+
+    def draw(self, surface):
+        pygame.draw.line(surface, (250, 0, 0), (self.x, self.y), (
+            self.x + math.cos(math.radians(self.angle)) * self.range,
+            self.y - math.sin(math.radians(self.angle)) * self.range), 2)
+
     # ======================== LOCAL FUNCTIONS ==========================
 
     # ----
 
 
-def draw_window(win, drones, ceil, floor, cave):
+def draw_window(win, drones, ceil, floor, cave, sensors):
     win.blit(bg_img, (0, 0))
     floor.draw(win)
     ceil.draw(win)
     cave.draw(win)
 
     # base.draw(win)
-    for drone in drones:
+    for i, drone in enumerate(drones):
         # draw lines from bird to pipe
         # if DRAW_LINES:
         #     try:
@@ -169,6 +228,9 @@ def draw_window(win, drones, ceil, floor, cave):
         #         pass
         # draw bird
         win.blit(drone.img, (drone.x, drone.y))
+
+        for sensor in sensors[i]:
+            sensor.draw(win)
 
     # # score
     # score_label = STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
@@ -197,10 +259,12 @@ def eval_genomes(genomes, config):
 
     # start by creating lists holding the genome itself, the
     # neural network associated with the genome and the
-    # bird object that uses that network to play
+    # drone object that uses that network to play
     nets = []
     drones = []
     ge = []
+    sensors = []  # List of lists
+
     for genome_id, genome in genomes:
         genome.fitness = 0  # start with fitness level of 0
         net = neat.nn.FeedForwardNetwork.create(genome, config)
@@ -208,46 +272,56 @@ def eval_genomes(genomes, config):
         drones.append(Drone(50, 50))
         ge.append(genome)
 
+    for drone in drones:
+        drone_sensor_list = [Sensor(60, 60, 45 * sensor, 50) for sensor in range(8)]
+        sensors.append(drone_sensor_list)
+
     ceiling = Ceil(0)
     floor = Floor(500)
     cave = Cave(0)
-
-    score = 0
+    obstacles = [ceiling.IMG, floor.IMG, cave.IMG]
 
     clock = pygame.time.Clock()
 
-    run = True
-    while run and len(drones) > 0:
+    while len(drones) > 0:
         clock.tick(30)
 
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
-                run = False
                 pygame.quit()
                 quit()
-                break
 
-        for x, drone in enumerate(drones):  # give each bird a fitness of 0.1 for each frame it stays alive
-            ge[x].fitness += 0.1
+        # sensed_lists = [[False] * 8 for _ in drones]  # initialize sensed_lists with all False values
+        sensed_lists = [[0] * 8 for _ in drones]
+        for i, drone in enumerate(drones):
+            ge[i].fitness += 0.1
 
-            # send bird location, top pipe location and bottom pipe location and determine from network whether to jump
-            # or not
-            drone.commands = nets[drones.index(drone)].activate((drone.x, drone.y))
+            for j, sensor in enumerate(sensors[i]):
+                sensor.x = drone.x + (drone_width / 2)
+                sensor.y = drone.y + (drone_height / 2)
+                # sensed_obstacle = any(sensor.detect_obstacle(obstacle) for obstacle in obstacles)
+                #
+                # if sensed_obstacle:
+                #     sensed_lists[i][j] = True
+                dist = sensor.check_radar(win)
+                sensed_lists[i][j] = dist
+
+            inputs = (drone.x, drone.y, sensed_lists[i][0], sensed_lists[i][1], sensed_lists[i][2], sensed_lists[i][3],
+                      sensed_lists[i][4], sensed_lists[i][5], sensed_lists[i][6], sensed_lists[i][7])
+
+            drone.commands = nets[i].activate(inputs)
 
             (x, y) = drone.move()
 
-        for drone in drones:
-            if drone.collision(ceiling) or drone.collision(floor) or drone.collision(cave):
-                nets.pop(drones.index(drone))
-                ge.pop(drones.index(drone))
-                drones.pop(drones.index(drone))
+        drones_to_remove = []
+        for i, drone in enumerate(drones):
+            if drone.collision(ceiling) or drone.collision(floor) or drone.collision(cave) or \
+                    drone.y > WIN_HEIGHT or drone.y < 0 or drone.x < 0 or drone.x > WIN_WIDTH:
+                nets.pop(i)
+                ge.pop(i)
+                drones.pop(i)
 
-            if drone.y > WIN_HEIGHT or drone.y < 0 or drone.x < 0 or drone.x > WIN_WIDTH:
-                nets.pop(drones.index(drone))
-                ge.pop(drones.index(drone))
-                drones.pop(drones.index(drone))
-
-        draw_window(WIN, drones, ceiling, floor, cave)
+        draw_window(WIN, drones, ceiling, floor, cave, sensors)
 
 
 def run(config_file):
@@ -269,7 +343,7 @@ def run(config_file):
     p.add_reporter(stats)
 
     # Run for up to 50 generations.
-    winner = p.run(eval_genomes, 50)
+    winner = p.run(eval_genomes, 10)
 
     # show final stats
     print('\nBest genome:\n{!s}'.format(winner))
