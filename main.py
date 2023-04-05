@@ -26,6 +26,9 @@ STAT_FONT = pygame.font.SysFont("comicsans", 50)
 END_FONT = pygame.font.SysFont("comicsans", 70)
 DRAW_LINES = False
 
+MAP_SIZE = (100, 100)
+
+
 drone_height = 20
 drone_width = 20
 
@@ -146,6 +149,7 @@ class Drone:
         return self.x, self.y
 
 
+# Sensor
 class Sensor:
     def __init__(self, x, y, angle, sen_range):
         self.x = x
@@ -162,16 +166,16 @@ class Sensor:
         while not win.get_at((end_x, end_y)) == OBSTACLE_COLOUR and length < self.range:
             length = length + 1
             end_x = int(self.x + math.cos(math.radians(self.angle)) * length)
-            if end_x < 0:
+            if end_x < 0 + 5:
                 end_x = 0
-            if end_x > WIN_WIDTH:
-                end_x = WIN_WIDTH
+            if end_x >= WIN_WIDTH - 5:
+                end_x = WIN_WIDTH - 5
 
             end_y = int(self.y - math.sin(math.radians(self.angle)) * length)
-            if end_y < 0:
-                end_y = 0
-            if end_y > WIN_HEIGHT:
-                end_y = WIN_HEIGHT
+            if end_y < 0 + 5:
+                end_y = 0 + 5
+            if end_y >= WIN_HEIGHT - 5:
+                end_y = WIN_HEIGHT - 5
 
         # Calculate Distance To Border And Append To Radars List
         dist = int(math.sqrt(math.pow(end_x - self.x, 2) + math.pow(end_y - self.y, 2)))
@@ -182,6 +186,16 @@ class Sensor:
         pygame.draw.line(surface, (250, 0, 0), (self.x, self.y), (
             self.x + math.cos(math.radians(self.angle)) * self.range,
             self.y - math.sin(math.radians(self.angle)) * self.range), 2)
+
+
+# MAP
+class Map:
+    array = [[False for x in range(MAP_SIZE[0])] for y in range(MAP_SIZE[1])]
+    cell_size = (WIN_WIDTH // MAP_SIZE[0], WIN_HEIGHT // MAP_SIZE[1])
+
+    def __int__(self):
+        self.array = [[False for x in range(MAP_SIZE[0])] for y in range(MAP_SIZE[1])]
+        self.cell_size = (WIN_WIDTH // MAP_SIZE[0], WIN_HEIGHT // MAP_SIZE[1])
 
 
 # ======================== LOCAL FUNCTIONS ==========================
@@ -244,6 +258,7 @@ def eval_genomes(genomes, config):
     drones = []
     ge = []
     sensors = []  # List of lists
+    maps = []
 
     for genome_id, genome in genomes:
         genome.fitness = 0  # start with fitness level of 0
@@ -251,6 +266,7 @@ def eval_genomes(genomes, config):
         nets.append(net)  # Add network to list of networks
         drones.append(Drone(50, 50))  # Add a new drone to list of drones
         ge.append(genome)  # Add genome to list of genomes
+        maps.append(Map)
 
     for _ in drones:
         drone_sensor_list = [Sensor(60, 60, 45 * sensor, 50) for sensor in range(8)]
@@ -292,6 +308,12 @@ def eval_genomes(genomes, config):
 
             (x, y) = drone.move()  # Move the drone
 
+            map_x = int(x) // maps[i].cell_size[0]
+            map_y = int(y) // maps[i].cell_size[1]
+            if not maps[i].array[map_y][map_x]:
+                maps[i].array[map_y][map_x] = True
+                ge[i].fitness += 1
+
         for i, drone in enumerate(drones):
             # If it collides with anything, kill it.
             if drone.collision(ceiling) or drone.collision(floor) or drone.collision(cave) or \
@@ -305,6 +327,16 @@ def eval_genomes(genomes, config):
                 nets.pop(i)
                 ge.pop(i)
                 drones.pop(i)
+
+        # # Draw the map
+        # for y in range(MAP_SIZE[1]):
+        #     for x in range(MAP_SIZE[0]):
+        #         if map[y][x]:
+        #             color = (0, 255, 0)  # Visited cells are green
+        #         else:
+        #             color = (255, 255, 255)  # Unvisited cells are white
+        #         rect = pygame.Rect(x * cell_size[0], y * cell_size[1], cell_size[0], cell_size[1])
+        #         pygame.draw.rect(WIN, color, rect)
 
         draw_window(WIN, drones, ceiling, floor, cave, sensors)
 
