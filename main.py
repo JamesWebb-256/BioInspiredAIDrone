@@ -46,6 +46,8 @@ ceil_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil
 cave_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_1.png")), (WIN_WIDTH, WIN_HEIGHT))]
 
 # ========= Surroundings =========
+
+
 class Cave:
     IMG = cave_imgs[0]
 
@@ -106,8 +108,8 @@ class Drone:
         self.acc = 0
         self.commands = [0, 0]
 
-        self.hori = 0  # Forward
-        self.vert = 0  # Right-ward
+        self.hori = 0  # Right-ward
+        self.vert = 0  # Downward
 
     def collision(self, obstacle):
         """
@@ -121,16 +123,13 @@ class Drone:
 
         return b_point
 
-    def sensors(self):
-        pass
-
     def move(self):
 
         # command[0] controls the movement forward and backwards from value [-1, 1]
         # command[1] controls the movement sideways from value [-1, 1]
 
-        if self.commands[0] > ACTIVATION_THRESHOLD or self.commands[0] < (
-        - ACTIVATION_THRESHOLD):  # If going forward/backwards
+        if self.commands[0] > ACTIVATION_THRESHOLD or self.commands[0] < (- ACTIVATION_THRESHOLD):  # If going
+            # forward/backwards
             self.vert = self.commands[0] * ACC_STRENGTH
 
         if self.commands[1] > ACTIVATION_THRESHOLD or self.commands[1] < (- ACTIVATION_THRESHOLD):  # If going sideways
@@ -153,22 +152,6 @@ class Sensor:
         self.y = y
         self.angle = angle
         self.range = sen_range
-
-    def detect_obstacle(self, obstacle_image):
-        # Calculate the endpoint of the sensor's range
-        end_x = self.x + math.cos(math.radians(self.angle)) * self.range
-        end_y = self.y - math.sin(math.radians(self.angle)) * self.range
-
-        obstacle_mask = pygame.mask.from_surface(obstacle_image)
-        # Create a mask for the sensor's line of sight
-        sight_mask = pygame.mask.from_surface(pygame.Surface((self.range * 2, self.range * 2), pygame.SRCALPHA))
-
-        # Check if the sensor overlaps with the obstacle mask
-        if obstacle_mask.overlap(sight_mask, (int(self.x - self.range), int(self.y - self.range))):
-            print('------------------------------')
-            return True
-        else:
-            return False
 
     def check_radar(self, win):
         length = 0
@@ -200,11 +183,8 @@ class Sensor:
             self.x + math.cos(math.radians(self.angle)) * self.range,
             self.y - math.sin(math.radians(self.angle)) * self.range), 2)
 
-    # ======================== LOCAL FUNCTIONS ==========================
 
-    # ----
-
-
+# ======================== LOCAL FUNCTIONS ==========================
 def draw_window(win, drones, ceil, floor, cave, sensors):
     win.blit(bg_img, (0, 0))
     floor.draw(win)
@@ -267,56 +247,61 @@ def eval_genomes(genomes, config):
 
     for genome_id, genome in genomes:
         genome.fitness = 0  # start with fitness level of 0
-        net = neat.nn.FeedForwardNetwork.create(genome, config)
-        nets.append(net)
-        drones.append(Drone(50, 50))
-        ge.append(genome)
+        net = neat.nn.FeedForwardNetwork.create(genome, config)  # Define neural network for genome
+        nets.append(net)  # Add network to list of networks
+        drones.append(Drone(50, 50))  # Add a new drone to list of drones
+        ge.append(genome)  # Add genome to list of genomes
 
-    for drone in drones:
+    for _ in drones:
         drone_sensor_list = [Sensor(60, 60, 45 * sensor, 50) for sensor in range(8)]
-        sensors.append(drone_sensor_list)
+        sensors.append(drone_sensor_list)  # Add list of sensors for each drone
 
+    # Create all the obstacles in the map
     ceiling = Ceil(0)
     floor = Floor(500)
     cave = Cave(0)
     obstacles = [ceiling.IMG, floor.IMG, cave.IMG]
 
+    start_time = pygame.time.get_ticks()  # Set for a time-limit for all the genomes
+
     clock = pygame.time.Clock()
 
     while len(drones) > 0:
-        clock.tick(30)
+        clock.tick(30)  # 30 frames per second (i think)
 
-        for event in pygame.event.get():
+        for event in pygame.event.get():  # Set up so you can actually quit pygame
             if event.type == pygame.QUIT:
                 pygame.quit()
                 quit()
 
-        # sensed_lists = [[False] * 8 for _ in drones]  # initialize sensed_lists with all False values
-        sensed_lists = [[0] * 8 for _ in drones]
+        sensed_lists = [[0] * 8 for _ in drones]  # Set up the lists for the sensor output values
         for i, drone in enumerate(drones):
-            ge[i].fitness += 0.1
+            ge[i].fitness += 0.1  # If it is still alive reward it for staying alive
 
             for j, sensor in enumerate(sensors[i]):
                 sensor.x = drone.x + (drone_width / 2)
                 sensor.y = drone.y + (drone_height / 2)
-                # sensed_obstacle = any(sensor.detect_obstacle(obstacle) for obstacle in obstacles)
-                #
-                # if sensed_obstacle:
-                #     sensed_lists[i][j] = True
-                dist = sensor.check_radar(win)
+                dist = sensor.check_radar(win)  # Distance of an obstacle from the drone (Max value = 300)
                 sensed_lists[i][j] = dist
 
+            # Create a tuple for the input of the neural network
             inputs = (drone.x, drone.y, sensed_lists[i][0], sensed_lists[i][1], sensed_lists[i][2], sensed_lists[i][3],
                       sensed_lists[i][4], sensed_lists[i][5], sensed_lists[i][6], sensed_lists[i][7])
 
-            drone.commands = nets[i].activate(inputs)
+            drone.commands = nets[i].activate(inputs)  # Get the outputs of the neural network given the inputs
 
-            (x, y) = drone.move()
+            (x, y) = drone.move()  # Move the drone
 
-        drones_to_remove = []
         for i, drone in enumerate(drones):
+            # If it collides with anything, kill it.
             if drone.collision(ceiling) or drone.collision(floor) or drone.collision(cave) or \
                     drone.y > WIN_HEIGHT or drone.y < 0 or drone.x < 0 or drone.x > WIN_WIDTH:
+                nets.pop(i)
+                ge.pop(i)
+                drones.pop(i)
+        elapsed_time = pygame.time.get_ticks() - start_time
+        if elapsed_time > 20000:  # 10 seconds time limit (in milliseconds)
+            for i, drone in enumerate(drones):
                 nets.pop(i)
                 ge.pop(i)
                 drones.pop(i)
