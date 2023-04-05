@@ -1,7 +1,9 @@
 import numpy as np
 import pygame
 
+display = pygame.display.set_mode((1200, 600))
 pygame.init()
+from cave import cave
 from Drone import *
 # from Physics import *
 
@@ -16,9 +18,11 @@ from pygame.locals import (
 )
 
 Drone = Drone(np.array([[100, 100]]), (255, 255, 255), 10)
-display = pygame.display.set_mode((400, 500))
+
+cave = cave(10)
 
 Drone.draw(display)
+cave.draw(display)
 running = True
 
 while running:
@@ -41,9 +45,12 @@ while running:
         if pressed_keys[K_UP]:
             Drone.move()
             Drone.draw(display)
+            cave.draw(display)
 
         if event.type == pygame.QUIT:
             running = False
+        cave.draw(display)
         pygame.display.flip()
     Drone.move()
     Drone.draw(display)
+    cave.draw(display)
