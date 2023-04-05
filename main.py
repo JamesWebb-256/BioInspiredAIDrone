@@ -25,8 +25,8 @@ WIN_HEIGHT = 600
 STAT_FONT = pygame.font.SysFont("comicsans", 50)
 END_FONT = pygame.font.SysFont("comicsans", 70)
 DRAW_LINES = False
-
-MAP_SIZE = (100, 100)
+TIME_LIMIT = 30000
+MAP_SIZE = (200, 200)
 
 
 drone_height = 20
@@ -110,6 +110,7 @@ class Drone:
         self.img = drone_images[0]
         self.acc = 0
         self.commands = [0, 0]
+        self.time_since_explored = 0
 
         self.hori = 0  # Right-ward
         self.vert = 0  # Downward
@@ -292,7 +293,7 @@ def eval_genomes(genomes, config):
 
         sensed_lists = [[0] * 8 for _ in drones]  # Set up the lists for the sensor output values
         for i, drone in enumerate(drones):
-            ge[i].fitness += 0.1  # If it is still alive reward it for staying alive
+            ge[i].fitness += 0.05  # If it is still alive reward it for staying alive
 
             for j, sensor in enumerate(sensors[i]):
                 sensor.x = drone.x + (drone_width / 2)
@@ -313,6 +314,9 @@ def eval_genomes(genomes, config):
             if not maps[i].array[map_y][map_x]:
                 maps[i].array[map_y][map_x] = True
                 ge[i].fitness += 1
+                drone.time_since_explored = 0
+            else:
+                drone.time_since_explored += 1
 
         for i, drone in enumerate(drones):
             # If it collides with anything, kill it.
@@ -321,8 +325,13 @@ def eval_genomes(genomes, config):
                 nets.pop(i)
                 ge.pop(i)
                 drones.pop(i)
+            if drone.time_since_explored > 50:
+                nets.pop(i)
+                ge.pop(i)
+                drones.pop(i)
+
         elapsed_time = pygame.time.get_ticks() - start_time
-        if elapsed_time > 20000:  # 10 seconds time limit (in milliseconds)
+        if elapsed_time > TIME_LIMIT:  # 10 seconds time limit (in milliseconds)
             for i, drone in enumerate(drones):
                 nets.pop(i)
                 ge.pop(i)
