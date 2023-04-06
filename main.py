@@ -12,91 +12,94 @@ pygame.font.init()  # init font
 # =========== Variables to play around with ============
 # =================== Drone Specs ==================================
 
-DRONE_DBG = False
-MAX_VEL = 200
-ACC_STRENGTH = 2
-BRAKE_STRENGTH = 2
-SENSOR_DISTANCE = 200
-ACTIVATION_THRESHOLD = 0.5
+DRONE_DBG = False  # Idk was from code I stole
+MAX_VEL = 200  # Max velocity of the drone
+ACC_STRENGTH = 2  # Most the drone can move
+SENSOR_DISTANCE = 200  # Range of the sensor
+ACTIVATION_THRESHOLD = 0  # Threshold needed for neural network to activate the movement of the drone
 
 # =========== Recommend not changing these =============
+# Window dims
 WIN_WIDTH = 1200
 WIN_HEIGHT = 600
+
+# Font for scores if we wanted to draw them on the window
 STAT_FONT = pygame.font.SysFont("comicsans", 50)
 END_FONT = pygame.font.SysFont("comicsans", 70)
-DRAW_LINES = False
-TIME_LIMIT = 30000
-MAP_SIZE = (200, 200)
 
+DRAW_LINES = False  # If you want to draw the lines of the sensors
+TIME_LIMIT = 30000  # Time limit of each run in milliseconds (30000 = 30 secs)
+MAP_SIZE = (200, 200)  # Grid size for calculating where the drone has been
 
+# Drone dims
 drone_height = 20
 drone_width = 20
 
+# Initialising the pygame window
 WIN = pygame.display.set_mode((WIN_WIDTH, WIN_HEIGHT))
 pygame.display.set_caption("Cave Explorer")
 
+# Colour of all the cave sections (obstacles)
 OBSTACLE_COLOUR = (185, 122, 87)
 
+# Initialising generation number
 gen = 0
 
+# ================== CAVE IMAGES ==================
 drone_images = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "blue_drone.png")), (drone_width, drone_height))]
 bg_img = pygame.transform.scale(pygame.image.load(os.path.join("imgs", "background.png")), (WIN_WIDTH, WIN_HEIGHT))
 
 ceil_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_1.png")), (WIN_WIDTH, 100)),
-             pygame.transform.rotate(
-                 pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_1.png")), (WIN_WIDTH, 100)), -180)]
+             pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_2.png")), (WIN_WIDTH, 100)),
+             pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_3.png")), (WIN_WIDTH, 100))]
 
-cave_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_1.png")), (WIN_WIDTH, WIN_HEIGHT))]
+
+floor_imgs = [pygame.transform.rotate(pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_1.png")),
+                                                             (WIN_WIDTH, 100)), -180),
+              pygame.transform.rotate(pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_2.png")),
+                                                             (WIN_WIDTH, 100)), -180),
+              pygame.transform.rotate(pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_3.png")),
+                                                             (WIN_WIDTH, 100)), -180)
+              ]
+
+cave_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_1.png")), (WIN_WIDTH, WIN_HEIGHT)),
+             pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_2.png")), (WIN_WIDTH, WIN_HEIGHT)),
+             pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_3.png")), (WIN_WIDTH, WIN_HEIGHT)),
+             pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_4.png")), (WIN_WIDTH, WIN_HEIGHT)),
+             pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_5.png")), (WIN_WIDTH, WIN_HEIGHT))]
+
 
 # ========= Surroundings =========
-
-
 class Cave:
-    IMG = cave_imgs[0]
 
-    def __init__(self, y):
+    def __init__(self, y, img_ind):
         self.y = y
         self.x = 0
+        self.IMG = cave_imgs[img_ind]
 
     def draw(self, win):
         win.blit(self.IMG, (self.x, self.y))
 
 
 class Floor:
-    IMG = ceil_imgs[1]
 
-    def __init__(self, y):
+    def __init__(self, y, img_ind):
         self.y = y
         self.x = 0
+        self.IMG = floor_imgs[img_ind]
 
     def draw(self, win):
         win.blit(self.IMG, (self.x, self.y))
 
 
 class Ceil:
-    """
-    Represnts the moving floor of the game
-    """
-    IMG = ceil_imgs[0]
-
-    def __init__(self, y):
-        """
-        Initialize the object
-        :param y: int
-        :return: None
-        """
+    def __init__(self, y, img_ind):
         self.y = y
         self.x = 0
+        self.IMG = ceil_imgs[img_ind]
 
     def draw(self, win):
-        """
-        Draw the floor. This is two images that move together.
-        :param win: the pygame surface/window
-        :return: None
-        """
         win.blit(self.IMG, (self.x, self.y))
-
-
 # ========= End of Surroundings =========
 
 
@@ -148,9 +151,10 @@ class Drone:
         self.y = self.y - self.vert  # I subtract because the origin is top left
 
         return self.x, self.y
+# ================== END OF DRONES ==================
 
 
-# Sensor
+# ================== SENSOR ==================
 class Sensor:
     def __init__(self, x, y, angle, sen_range):
         self.x = x
@@ -163,7 +167,7 @@ class Sensor:
         end_x = round(self.x)
         end_y = round(self.y)
 
-        # While We Don't Hit BORDER_COLOR AND length < 300 (just a max) -> go further and further
+        # While We Don't Hit OBSTACLE COLOUR AND length < sensor range -> make the length of sensor larger
         while not win.get_at((end_x, end_y)) == OBSTACLE_COLOUR and length < self.range:
             length = length + 1
             end_x = int(self.x + math.cos(math.radians(self.angle)) * length)
@@ -187,9 +191,10 @@ class Sensor:
         pygame.draw.line(surface, (250, 0, 0), (self.x, self.y), (
             self.x + math.cos(math.radians(self.angle)) * self.range,
             self.y - math.sin(math.radians(self.angle)) * self.range), 2)
+# ================== END OF SENSOR ==================
 
 
-# MAP
+# ================== MAP ==================
 class Map:
     array = [[False for x in range(MAP_SIZE[0])] for y in range(MAP_SIZE[1])]
     cell_size = (WIN_WIDTH // MAP_SIZE[0], WIN_HEIGHT // MAP_SIZE[1])
@@ -197,16 +202,19 @@ class Map:
     def __int__(self):
         self.array = [[False for x in range(MAP_SIZE[0])] for y in range(MAP_SIZE[1])]
         self.cell_size = (WIN_WIDTH // MAP_SIZE[0], WIN_HEIGHT // MAP_SIZE[1])
+# ================== END OF MAP ==================
 
 
 # ======================== LOCAL FUNCTIONS ==========================
 def draw_window(win, drones, ceil, floor, cave, sensors):
-    win.blit(bg_img, (0, 0))
+    win.blit(bg_img, (0, 0))  # Draw the background image (taken from super mario 2)
+
+    # Draw obstacles
     floor.draw(win)
     ceil.draw(win)
     cave.draw(win)
 
-    # base.draw(win)
+    # For each drone, draw the drone and if told to do so, draw the line sensors
     for i, drone in enumerate(drones):
         # draw lines from bird to pipe
         # if DRAW_LINES:
@@ -224,8 +232,9 @@ def draw_window(win, drones, ceil, floor, cave, sensors):
         # draw bird
         win.blit(drone.img, (drone.x, drone.y))
 
-        for sensor in sensors[i]:
-            sensor.draw(win)
+        if DRAW_LINES:
+            for sensor in sensors[i]:
+                sensor.draw(win)
 
     # # score
     # score_label = STAT_FONT.render("Score: " + str(score), 1, (255, 255, 255))
@@ -248,6 +257,7 @@ def eval_genomes(genomes, config):
     drones and sets their fitness based on the distance they
     reach in the game.
     """
+    # ================== INITIALISE RUN ==================
     global WIN, gen
     win = WIN
     gen += 1
@@ -274,15 +284,18 @@ def eval_genomes(genomes, config):
         sensors.append(drone_sensor_list)  # Add list of sensors for each drone
 
     # Create all the obstacles in the map
-    ceiling = Ceil(0)
-    floor = Floor(500)
-    cave = Cave(0)
-    obstacles = [ceiling.IMG, floor.IMG, cave.IMG]
+    # Select a random image from the possible images
+    ceil_floor_ind = random.randint(0, 2)
+    cave_ind = random.randint(0, 4)
+
+    ceiling = Ceil(0, ceil_floor_ind)
+    floor = Floor(500, ceil_floor_ind)
+    cave = Cave(0, cave_ind)
 
     start_time = pygame.time.get_ticks()  # Set for a time-limit for all the genomes
-
     clock = pygame.time.Clock()
 
+    # While the run still has genomes to evaluate...
     while len(drones) > 0:
         clock.tick(30)  # 30 frames per second (i think)
 
@@ -291,10 +304,9 @@ def eval_genomes(genomes, config):
                 pygame.quit()
                 quit()
 
+        # ================== GET NEURAL NETWORK INPUTS ==================
         sensed_lists = [[0] * 8 for _ in drones]  # Set up the lists for the sensor output values
         for i, drone in enumerate(drones):
-            ge[i].fitness += 0.05  # If it is still alive reward it for staying alive
-
             for j, sensor in enumerate(sensors[i]):
                 sensor.x = drone.x + (drone_width / 2)
                 sensor.y = drone.y + (drone_height / 2)
@@ -307,8 +319,11 @@ def eval_genomes(genomes, config):
 
             drone.commands = nets[i].activate(inputs)  # Get the outputs of the neural network given the inputs
 
+            # ================== MOVE DRONE ==================
             (x, y) = drone.move()  # Move the drone
 
+            # ================== REWARD GENOMES ==================
+            ge[i].fitness += 0.05  # If it is still alive reward it for staying alive
             map_x = int(x) // maps[i].cell_size[0]
             map_y = int(y) // maps[i].cell_size[1]
             if not maps[i].array[map_y][map_x]:
@@ -318,6 +333,7 @@ def eval_genomes(genomes, config):
             else:
                 drone.time_since_explored += 1
 
+        # ================== CHECK IF DRONE IS ALIVE ==================
         for i, drone in enumerate(drones):
             # If it collides with anything, kill it.
             if drone.collision(ceiling) or drone.collision(floor) or drone.collision(cave) or \
@@ -330,8 +346,9 @@ def eval_genomes(genomes, config):
                 ge.pop(i)
                 drones.pop(i)
 
+        # ================== CHECK IF TIMELIMIT REACHED ==================
         elapsed_time = pygame.time.get_ticks() - start_time
-        if elapsed_time > TIME_LIMIT:  # 10 seconds time limit (in milliseconds)
+        if elapsed_time > TIME_LIMIT:  # Time limit (in milliseconds)
             for i, drone in enumerate(drones):
                 nets.pop(i)
                 ge.pop(i)
@@ -347,15 +364,16 @@ def eval_genomes(genomes, config):
         #         rect = pygame.Rect(x * cell_size[0], y * cell_size[1], cell_size[0], cell_size[1])
         #         pygame.draw.rect(WIN, color, rect)
 
+        # ================== DRAW THE UPDATED SIMULATION ==================
         draw_window(WIN, drones, ceiling, floor, cave, sensors)
 
 
 def run(config_file):
     """
-    runs the NEAT algorithm to train a neural network to play flappy bird.
-    :param config_file: location of config file
-    :return: None
+    runs the NEAT algorithm to train a neural network to fly drones.
     """
+
+    # Configure NEAT
     config = neat.config.Config(neat.DefaultGenome, neat.DefaultReproduction,
                                 neat.DefaultSpeciesSet, neat.DefaultStagnation,
                                 config_file)
@@ -368,7 +386,7 @@ def run(config_file):
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
 
-    # Run for up to 50 generations.
+    # Run for up to 'n' generations.
     winner = p.run(eval_genomes, 10)
 
     # show final stats
@@ -382,10 +400,3 @@ if __name__ == '__main__':
     local_dir = os.path.dirname(__file__)
     config_path = os.path.join(local_dir, 'config-feedforward.txt')
     run(config_path)
-    # running = True
-    # drones = [Drone(50, 50)]
-    # ceil = Ceil(0)
-    # floor = Floor(500)
-    # cave = Cave(0)
-    # while running:
-    #     draw_window(WIN, drones, ceil, floor, cave)
