@@ -198,15 +198,18 @@ class Sensor:
 class Map:
     array = [[False for x in range(MAP_SIZE[0])] for y in range(MAP_SIZE[1])]
     cell_size = (WIN_WIDTH // MAP_SIZE[0], WIN_HEIGHT // MAP_SIZE[1])
+    surface = pygame.Surface((MAP_SIZE[0] * cell_size[0], MAP_SIZE[1] * cell_size[1]), pygame.SRCALPHA)
 
     def __int__(self):
         self.array = [[False for x in range(MAP_SIZE[0])] for y in range(MAP_SIZE[1])]
         self.cell_size = (WIN_WIDTH // MAP_SIZE[0], WIN_HEIGHT // MAP_SIZE[1])
+        self.surface = pygame.Surface((MAP_SIZE[0] * self.cell_size[0], MAP_SIZE[1] * self.cell_size[1]),
+                                      pygame.SRCALPHA)
 # ================== END OF MAP ==================
 
 
 # ======================== LOCAL FUNCTIONS ==========================
-def draw_window(win, drones, ceil, floor, cave, sensors):
+def draw_window(win, drones, ceil, floor, cave, sensors, maps, best_drone):
     win.blit(bg_img, (0, 0))  # Draw the background image (taken from super mario 2)
 
     # Draw obstacles
@@ -247,6 +250,22 @@ def draw_window(win, drones, ceil, floor, cave, sensors):
     # # alive
     # score_label = STAT_FONT.render("Alive: " + str(len(birds)), 1, (255, 255, 255))
     # win.blit(score_label, (10, 50))
+
+    maps[best_drone].surface.fill((0, 0, 0, 0))
+
+    # Draw the squares on the surface
+    for y in range(MAP_SIZE[1]):
+        for x in range(MAP_SIZE[0]):
+            if maps[best_drone].array[x][y]:
+                color = (0, 255, 0, 100)  # Visited cells are green and slightly transparent
+            else:
+                color = (255, 255, 255, 0)  # Unvisited cells are white and slightly transparent
+            rect = pygame.Rect(x * maps[best_drone].cell_size[0], y * maps[best_drone].cell_size[1],
+                               maps[best_drone].cell_size[0], maps[best_drone].cell_size[1])
+            pygame.draw.rect(maps[best_drone].surface, color, rect)
+
+    # Draw the map for the best genome
+    win.blit(maps[best_drone].surface, (0, 0))
 
     pygame.display.update()
 
@@ -304,6 +323,9 @@ def eval_genomes(genomes, config):
                 pygame.quit()
                 quit()
 
+        best_drone_index = 0
+        best_fitness = 0
+
         # ================== GET NEURAL NETWORK INPUTS ==================
         sensed_lists = [[0] * 8 for _ in drones]  # Set up the lists for the sensor output values
         for i, drone in enumerate(drones):
@@ -326,12 +348,15 @@ def eval_genomes(genomes, config):
             ge[i].fitness += 0.05  # If it is still alive reward it for staying alive
             map_x = int(x) // maps[i].cell_size[0]
             map_y = int(y) // maps[i].cell_size[1]
-            if not maps[i].array[map_y][map_x]:
-                maps[i].array[map_y][map_x] = True
+            if not maps[i].array[map_x][map_y]:
+                maps[i].array[map_x][map_y] = True
                 ge[i].fitness += 1
                 drone.time_since_explored = 0
             else:
                 drone.time_since_explored += 1
+            if ge[i].fitness > best_fitness:
+                best_fitness = ge[i].fitness
+                best_drone_index = i
 
         # ================== CHECK IF DRONE IS ALIVE ==================
         for i, drone in enumerate(drones):
@@ -354,18 +379,8 @@ def eval_genomes(genomes, config):
                 ge.pop(i)
                 drones.pop(i)
 
-        # # Draw the map
-        # for y in range(MAP_SIZE[1]):
-        #     for x in range(MAP_SIZE[0]):
-        #         if map[y][x]:
-        #             color = (0, 255, 0)  # Visited cells are green
-        #         else:
-        #             color = (255, 255, 255)  # Unvisited cells are white
-        #         rect = pygame.Rect(x * cell_size[0], y * cell_size[1], cell_size[0], cell_size[1])
-        #         pygame.draw.rect(WIN, color, rect)
-
         # ================== DRAW THE UPDATED SIMULATION ==================
-        draw_window(WIN, drones, ceiling, floor, cave, sensors)
+        draw_window(WIN, drones, ceiling, floor, cave, sensors, maps, best_drone_index)
 
 
 def run(config_file):
