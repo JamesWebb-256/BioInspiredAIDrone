@@ -29,7 +29,7 @@ END_FONT = pygame.font.SysFont("comicsans", 70)
 
 DRAW_LINES = False  # If you want to draw the lines of the sensors
 TIME_LIMIT = 30000  # Time limit of each run in milliseconds (30000 = 30 secs)
-MAP_SIZE = (200, 200)  # Grid size for calculating where the drone has been
+MAP_SIZE = (50, 50)  # Grid size for calculating where the drone has been
 
 # Drone dims
 drone_height = 20
