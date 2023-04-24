@@ -5,16 +5,86 @@ import os
 import time
 import neat
 import pickle
+import gzip
 from math import sin, cos, tan, radians, atan2, degrees
+from neat.population import Population
+from neat.reporting import BaseReporter
 
 pygame.font.init()  # init font
+
+
+# =================== Pickle to save runs ===================
+
+class Checkpointer(BaseReporter):
+    """
+    A reporter class that performs checkpointing using `pickle`
+    to save and restore populations (and other aspects of the simulation state).
+    """
+
+    def __init__(self, generation_interval=100, time_interval_seconds=300,
+                 filename_prefix='neat-checkpoint-'):
+        """
+        Saves the current state (at the end of a generation) every ``generation_interval`` generations or
+        ``time_interval_seconds``, whichever happens first.
+
+        :param generation_interval: If not None, maximum number of generations between save intervals
+        :type generation_interval: int or None
+        :param time_interval_seconds: If not None, maximum number of seconds between checkpoint attempts
+        :type time_interval_seconds: float or None
+        :param str filename_prefix: Prefix for the filename (the end will be the generation number)
+        """
+        self.generation_interval = generation_interval
+        self.time_interval_seconds = time_interval_seconds
+        self.filename_prefix = filename_prefix
+
+        self.current_generation = None
+        self.last_generation_checkpoint = -1
+        self.last_time_checkpoint = time.time()
+
+    def start_generation(self, generation):
+        self.current_generation = generation
+
+    def end_generation(self, config, population, species_set):
+        checkpoint_due = False
+
+        if self.time_interval_seconds is not None:
+            dt = time.time() - self.last_time_checkpoint
+            if dt >= self.time_interval_seconds:
+                checkpoint_due = True
+
+        if (checkpoint_due is False) and (self.generation_interval is not None):
+            dg = self.current_generation - self.last_generation_checkpoint
+            if dg >= self.generation_interval:
+                checkpoint_due = True
+
+        if checkpoint_due:
+            self.save_checkpoint(config, population, species_set, self.current_generation)
+            self.last_generation_checkpoint = self.current_generation
+            self.last_time_checkpoint = time.time()
+
+    def save_checkpoint(self, config, population, species_set, generation):
+        """ Save the current simulation state. """
+        filename = '{0}{1}'.format(self.filename_prefix, generation)
+        print("Saving checkpoint to {0}".format(filename))
+
+        with gzip.open(filename, 'w', compresslevel=5) as f:
+            data = (generation, config, population, species_set, random.getstate())
+            pickle.dump(data, f, protocol=pickle.HIGHEST_PROTOCOL)
+
+    def restore_checkpoint(self, filename):
+        """Resumes the simulation from a previous saved point."""
+        with gzip.open(filename) as f:
+            generation, config, population, species_set, rndstate = pickle.load(f)
+            random.setstate(rndstate)
+            return Population(config, (population, species_set, generation))
+
 
 # =========== Variables to play around with ============
 # =================== Drone Specs ==================================
 
 DRONE_DBG = False  # Idk was from code I stole
-MAX_VEL = 200  # Max velocity of the drone
-ACC_STRENGTH = 2  # Most the drone can move
+MAX_VEL = 200  # Max velocity of the drone, default 200
+ACC_STRENGTH = 2  # Most the drone can move, default 2
 SENSOR_DISTANCE = 200  # Range of the sensor
 ACTIVATION_THRESHOLD = 0  # Threshold needed for neural network to activate the movement of the drone
 
@@ -46,13 +116,13 @@ OBSTACLE_COLOUR = (185, 122, 87)
 gen = 0
 
 # ================== CAVE IMAGES ==================
-drone_images = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "blue_drone.png")), (drone_width, drone_height))]
+drone_images = [
+    pygame.transform.scale(pygame.image.load(os.path.join("imgs", "New_Drone.png")), (drone_width, drone_height))]
 bg_img = pygame.transform.scale(pygame.image.load(os.path.join("imgs", "background.png")), (WIN_WIDTH, WIN_HEIGHT))
 
 ceil_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_1.png")), (WIN_WIDTH, 100)),
              pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_2.png")), (WIN_WIDTH, 100)),
              pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_3.png")), (WIN_WIDTH, 100))]
-
 
 floor_imgs = [pygame.transform.rotate(pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_1.png")),
                                                              (WIN_WIDTH, 100)), -180),
@@ -61,12 +131,19 @@ floor_imgs = [pygame.transform.rotate(pygame.transform.scale(pygame.image.load(o
               pygame.transform.rotate(pygame.transform.scale(pygame.image.load(os.path.join("imgs", "ceil_3.png")),
                                                              (WIN_WIDTH, 100)), -180)
               ]
-
+"""
 cave_imgs = [pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_1.png")), (WIN_WIDTH, WIN_HEIGHT)),
              pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_2.png")), (WIN_WIDTH, WIN_HEIGHT)),
              pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_3.png")), (WIN_WIDTH, WIN_HEIGHT)),
              pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_4.png")), (WIN_WIDTH, WIN_HEIGHT)),
              pygame.transform.scale(pygame.image.load(os.path.join("imgs", "cave_5.png")), (WIN_WIDTH, WIN_HEIGHT))]
+"""
+cave_imgs = [
+    pygame.transform.scale(pygame.image.load(os.path.join("imgs", "alternate_cave_3.png")), (WIN_WIDTH, WIN_HEIGHT)),
+    pygame.transform.scale(pygame.image.load(os.path.join("imgs", "alternate_cave_3.png")), (WIN_WIDTH, WIN_HEIGHT)),
+    pygame.transform.scale(pygame.image.load(os.path.join("imgs", "alternate_cave_3.png")), (WIN_WIDTH, WIN_HEIGHT)),
+    pygame.transform.scale(pygame.image.load(os.path.join("imgs", "alternate_cave_3.png")), (WIN_WIDTH, WIN_HEIGHT)),
+    pygame.transform.scale(pygame.image.load(os.path.join("imgs", "alternate_cave_3.png")), (WIN_WIDTH, WIN_HEIGHT))]
 
 
 # ========= Surroundings =========
@@ -100,6 +177,8 @@ class Ceil:
 
     def draw(self, win):
         win.blit(self.IMG, (self.x, self.y))
+
+
 # ========= End of Surroundings =========
 
 
@@ -114,6 +193,7 @@ class Drone:
         self.acc = 0
         self.commands = [0, 0]
         self.time_since_explored = 0
+        self.map = [[False for x in range(MAP_SIZE[0])] for y in range(MAP_SIZE[1])]
 
         self.hori = 0  # Right-ward
         self.vert = 0  # Downward
@@ -151,6 +231,8 @@ class Drone:
         self.y = self.y - self.vert  # I subtract because the origin is top left
 
         return self.x, self.y
+
+
 # ================== END OF DRONES ==================
 
 
@@ -191,6 +273,8 @@ class Sensor:
         pygame.draw.line(surface, (250, 0, 0), (self.x, self.y), (
             self.x + math.cos(math.radians(self.angle)) * self.range,
             self.y - math.sin(math.radians(self.angle)) * self.range), 2)
+
+
 # ================== END OF SENSOR ==================
 
 
@@ -205,6 +289,8 @@ class Map:
         self.cell_size = (WIN_WIDTH // MAP_SIZE[0], WIN_HEIGHT // MAP_SIZE[1])
         self.surface = pygame.Surface((MAP_SIZE[0] * self.cell_size[0], MAP_SIZE[1] * self.cell_size[1]),
                                       pygame.SRCALPHA)
+
+
 # ================== END OF MAP ==================
 
 
@@ -252,7 +338,23 @@ def draw_window(win, drones, ceil, floor, cave, sensors, maps, best_drone):
     # win.blit(score_label, (10, 50))
 
     maps[best_drone].surface.fill((0, 0, 0, 0))
+    # Loop over all pixels
+    for y in range(MAP_SIZE[1]):
+        for x in range(MAP_SIZE[0]):
+            # Start with opacity at 0
+            opacity = 0
+            # Loop over all the drones
+            # If a drone has been there, increase opacity (Max opacity is 255, this will break if you have more than
+            # 25 drones
+            for i, drone in enumerate(drones):
+                if drone.map[x][y]:
+                    opacity += 2
+            rect = pygame.Rect(x * maps[best_drone].cell_size[0], y * maps[best_drone].cell_size[1],
+                               maps[best_drone].cell_size[0], maps[best_drone].cell_size[1])
+            # print("Drawing rectangle")
+            pygame.draw.rect(maps[best_drone].surface, (0, 255, 0, opacity), rect)
 
+    """
     # Draw the squares on the surface
     for y in range(MAP_SIZE[1]):
         for x in range(MAP_SIZE[0]):
@@ -263,6 +365,7 @@ def draw_window(win, drones, ceil, floor, cave, sensors, maps, best_drone):
             rect = pygame.Rect(x * maps[best_drone].cell_size[0], y * maps[best_drone].cell_size[1],
                                maps[best_drone].cell_size[0], maps[best_drone].cell_size[1])
             pygame.draw.rect(maps[best_drone].surface, color, rect)
+    """
 
     # Draw the map for the best genome
     win.blit(maps[best_drone].surface, (0, 0))
@@ -294,7 +397,7 @@ def eval_genomes(genomes, config):
         genome.fitness = 0  # start with fitness level of 0
         net = neat.nn.FeedForwardNetwork.create(genome, config)  # Define neural network for genome
         nets.append(net)  # Add network to list of networks
-        drones.append(Drone(50, 50))  # Add a new drone to list of drones
+        drones.append(Drone(50, 300))  # Add a new drone to list of drones
         ge.append(genome)  # Add genome to list of genomes
         maps.append(Map)
 
@@ -315,8 +418,10 @@ def eval_genomes(genomes, config):
     clock = pygame.time.Clock()
 
     # While the run still has genomes to evaluate...
+    step_count = 0
     while len(drones) > 0:
         clock.tick(30)  # 30 frames per second (i think)
+        step_count += 1
 
         for event in pygame.event.get():  # Set up so you can actually quit pygame
             if event.type == pygame.QUIT:
@@ -328,6 +433,7 @@ def eval_genomes(genomes, config):
 
         # ================== GET NEURAL NETWORK INPUTS ==================
         sensed_lists = [[0] * 8 for _ in drones]  # Set up the lists for the sensor output values
+        # Loop over every sensor on every drone
         for i, drone in enumerate(drones):
             for j, sensor in enumerate(sensors[i]):
                 sensor.x = drone.x + (drone_width / 2)
@@ -348,10 +454,20 @@ def eval_genomes(genomes, config):
             ge[i].fitness += 0.05  # If it is still alive reward it for staying alive
             map_x = int(x) // maps[i].cell_size[0]
             map_y = int(y) // maps[i].cell_size[1]
-            if not maps[i].array[map_x][map_y]:
-                maps[i].array[map_x][map_y] = True
+
+            # Check if the drone has visited this square before.
+            # If not:
+            #   update that drone's map with True at that square
+            #   Reward it
+            #   Reset its counter of time since explored
+            # if not maps[i].array[map_x][map_y]:
+            # maps[i].array[map_x][map_y] = True
+            if not drone.map[map_x][map_y]:
+                drone.map[map_x][map_y] = True
                 ge[i].fitness += 1
                 drone.time_since_explored = 0
+            # If it has been to that square before:
+            #   Increase its time since explored counter
             else:
                 drone.time_since_explored += 1
             if ge[i].fitness > best_fitness:
@@ -363,26 +479,32 @@ def eval_genomes(genomes, config):
             # If it collides with anything, kill it.
             if drone.collision(ceiling) or drone.collision(floor) or drone.collision(cave) or \
                     drone.y > WIN_HEIGHT or drone.y < 0 or drone.x < 0 or drone.x > WIN_WIDTH:
+                ge[i].fitness += -1000
                 nets.pop(i)
                 ge.pop(i)
                 drones.pop(i)
             if drone.time_since_explored > 50:
+                ge[i].fitness += -1000
                 nets.pop(i)
                 ge.pop(i)
                 drones.pop(i)
 
         # ================== CHECK IF TIMELIMIT REACHED ==================
         elapsed_time = pygame.time.get_ticks() - start_time
-        if elapsed_time > TIME_LIMIT:  # Time limit (in milliseconds)
+        # if elapsed_time > TIME_LIMIT:  # Time limit (in milliseconds)
+        if step_count > 1000:
             for i, drone in enumerate(drones):
                 nets.pop(i)
                 ge.pop(i)
                 drones.pop(i)
 
         # ================== DRAW THE UPDATED SIMULATION ==================
+
         draw_window(WIN, drones, ceiling, floor, cave, sensors, maps, best_drone_index)
+        # draw_window(WIN, drones, ceiling, floor, cave, sensors, [], best_drone_index)
+    # Code here to reset the list of green squares
 
-
+numgenerations = 10
 def run(config_file):
     """
     runs the NEAT algorithm to train a neural network to fly drones.
@@ -400,14 +522,26 @@ def run(config_file):
     p.add_reporter(neat.StdOutReporter(True))
     stats = neat.StatisticsReporter()
     p.add_reporter(stats)
+    #print(type(p))
+    #print(p.items)
 
     # Run for up to 'n' generations.
-    winner = p.run(eval_genomes, 10)
+    #winner = p.run(eval_genomes, numgenerations)
 
+    #Checkpointer.save_checkpoint(config, p, neat.DefaultSpeciesSet, numgenerations)
+
+    restoredp = Checkpointer.restore_checkpoint("neat-checkpoint-10")
+    #p.generation = restoredp.generation
+    #p.config = restoredp.config
+    #p.population = restoredp.population
+
+
+    winner = restoredp.run(eval_genomes, numgenerations)
     # show final stats
     print('\nBest genome:\n{!s}'.format(winner))
 
 
+Checkpointer = Checkpointer()
 if __name__ == '__main__':
     # Determine path to configuration file. This path manipulation is
     # here so that the script will run successfully regardless of the
